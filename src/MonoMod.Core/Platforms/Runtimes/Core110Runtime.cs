@@ -12,12 +12,12 @@ namespace MonoMod.Core.Platforms.Runtimes
         public Core110Runtime(ISystem system, IArchitecture arch) : base(system, arch) { }
 
         // src/coreclr/inc/jiteeversionguid.h
-        // 65743063-e8fa-41d4-9496-c436974c00f5
+        // 0d18a7df-af1f-4481-a72f-aa6cf8aa0a65
         private static readonly Guid JitVersionGuid = new(
-            0x65743063,
-            0xe8fa,
-            0x41d4,
-            0x94, 0x96, 0xc4, 0x36, 0x97, 0x4c, 0x00, 0xf5
+            0x0d18a7df,
+            0xaf1f,
+            0x4481,
+            0xa7, 0x2f, 0xaa, 0x6c, 0xf8, 0xaa, 0x0a, 0x65
         );
 
         protected override Guid ExpectedJitVersion => JitVersionGuid;
