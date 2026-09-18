@@ -250,7 +250,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -517,7 +517,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -784,7 +784,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -1057,7 +1057,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -1324,7 +1324,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -1338,7 +1338,7 @@
           "Mono.Cecil": "[0.11.6, )",
           "MonoMod.Backports": "[1.1.2, )",
           "MonoMod.ILHelpers": "[1.1.0, )",
-          "MonoMod.Utils": "[25.0.13-alpha.dev, )"
+          "MonoMod.Utils": "[25.0.15-alpha.dev, )"
         }
       },
       "monomod.patcher": {
@@ -1347,7 +1347,7 @@
           "Mono.Cecil": "[0.11.6, )",
           "MonoMod.Backports": "[1.1.2, )",
           "MonoMod.ILHelpers": "[1.1.0, )",
-          "MonoMod.Utils": "[25.0.13-alpha.dev, )"
+          "MonoMod.Utils": "[25.0.15-alpha.dev, )"
         }
       },
       "monomod.runtimedetour": {
@@ -1355,9 +1355,9 @@
         "dependencies": {
           "Mono.Cecil": "[0.11.6, )",
           "MonoMod.Backports": "[1.1.2, )",
-          "MonoMod.Core": "[1.3.5-alpha.dev, )",
+          "MonoMod.Core": "[1.3.7-alpha.dev, )",
           "MonoMod.ILHelpers": "[1.1.0, )",
-          "MonoMod.Utils": "[25.0.13-alpha.dev, )"
+          "MonoMod.Utils": "[25.0.15-alpha.dev, )"
         }
       },
       "monomod.runtimedetour.hookgen": {
@@ -1367,8 +1367,8 @@
           "MonoMod.Backports": "[1.1.2, )",
           "MonoMod.ILHelpers": "[1.1.0, )",
           "MonoMod.Patcher": "[0.0.0-alpha.dev, )",
-          "MonoMod.RuntimeDetour": "[25.3.5-alpha.dev, )",
-          "MonoMod.Utils": "[25.0.13-alpha.dev, )"
+          "MonoMod.RuntimeDetour": "[25.3.7-alpha.dev, )",
+          "MonoMod.Utils": "[25.0.15-alpha.dev, )"
         }
       },
       "monomod.utils": {
@@ -1532,23 +1532,10 @@
         "resolved": "17.3.3",
         "contentHash": "b8TXlHH/HcGoPQ8L5o0dYmbZz32gwGvevAOzYKccNljaOHX5JivPqUt2GJKtIljahN9uwLPdjabw49K1LYXyTA=="
       },
-      "Microsoft.NETCore.Platforms": {
-        "type": "Transitive",
-        "resolved": "1.1.0",
-        "contentHash": "kz0PEW2lhqygehI/d6XsPCQzD7ff7gUJaVGPVETX611eadGsA3A877GdSlU0LRVMCTH/+P3o2iDTak+S08V2+A=="
-      },
       "Microsoft.SourceLink.Common": {
         "type": "Transitive",
         "resolved": "8.0.0",
         "contentHash": "dk9JPxTCIevS75HyEQ0E4OVAFhB2N+V9ShCXf8Q6FkUQZDkgLI12y679Nym1YqsiSysuQskT7Z+6nUf3yab6Vw=="
-      },
-      "NETStandard.Library": {
-        "type": "Transitive",
-        "resolved": "1.6.1",
-        "contentHash": "WcSp3+vP+yHNgS8EV5J7pZ9IRpeDuARBPN28by8zqff1wJQXm26PVU8L3/fYLBJVU7BtDyqNVWq2KlCVvSSR4A==",
-        "dependencies": {
-          "Microsoft.NETCore.Platforms": "1.1.0"
-        }
       },
       "Newtonsoft.Json": {
         "type": "Transitive",
@@ -1568,17 +1555,13 @@
       "xunit.assert": {
         "type": "Transitive",
         "resolved": "2.4.2",
-        "contentHash": "pxJISOFjn2XTTi1mcDCkRZrTFb9OtRRCtx2kZFNF51GdReLr1ls2rnyxvAS4JO247K3aNtflvh5Q0346K5BROA==",
-        "dependencies": {
-          "NETStandard.Library": "1.6.1"
-        }
+        "contentHash": "pxJISOFjn2XTTi1mcDCkRZrTFb9OtRRCtx2kZFNF51GdReLr1ls2rnyxvAS4JO247K3aNtflvh5Q0346K5BROA=="
       },
       "xunit.extensibility.core": {
         "type": "Transitive",
         "resolved": "2.4.2",
         "contentHash": "W1BoXTIN1C6kpVSMw25huSet25ky6IAQUNovu3zGOGN/jWnbgSoTyCrlIhmXSg0tH5nEf8q7h3OjNHOjyu5PfA==",
         "dependencies": {
-          "NETStandard.Library": "1.6.1",
           "xunit.abstractions": "2.0.3"
         }
       },
@@ -1587,11 +1570,10 @@
         "resolved": "2.4.2",
         "contentHash": "CZmgcKkwpyo8FlupZdWpJCryrAOWLh1FBPG6gmVZuPQkGQsim/oL4PcP4nfrC2hHgXUFtluvaJ0Sp9PQKUMNpg==",
         "dependencies": {
-          "NETStandard.Library": "1.6.1",
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -1858,7 +1840,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -2125,7 +2107,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -2392,7 +2374,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -2659,7 +2641,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
@@ -2926,7 +2908,7 @@
           "xunit.extensibility.core": "[2.4.2]"
         }
       },
-      "iced": {
+      "Iced": {
         "type": "Project",
         "dependencies": {
           "MonoMod.Backports": "[1.1.2, )",
