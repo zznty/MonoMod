@@ -371,10 +371,19 @@ namespace MonoMod.Core.Platforms.Architectures
             var highBound = target + int.MaxValue;
             if ((nuint)highBound < (nuint)target)
                 highBound = -1;
+            NearAllocationCounters.DetourInfo();
             var memRequest = new PositionedAllocationRequest((nint)target, (nint)lowBound, (nint)highBound, new(IntPtr.Size));
-            if (sizeHint >= Rel32Ind64Kind.Instance.Size && system.MemoryAllocator.TryAllocateInRange(memRequest, out var allocated))
+            if (sizeHint >= Rel32Ind64Kind.Instance.Size)
             {
-                return new(from, to, Rel32Ind64Kind.Instance, allocated);
+                var startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                var nearAllocated = system.MemoryAllocator.TryAllocateInRange(memRequest, out var nearAlloc);
+                NearAllocationCounters.NearAllocation(
+                    System.Diagnostics.Stopwatch.GetTimestamp() - startTicks, nearAllocated);
+
+                if (nearAllocated)
+                {
+                    return new(from, to, Rel32Ind64Kind.Instance, nearAlloc);
+                }
             }
 
             // TODO: more, smaller detours

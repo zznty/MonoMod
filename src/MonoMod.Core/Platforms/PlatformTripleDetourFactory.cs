@@ -252,6 +252,7 @@ namespace MonoMod.Core.Platforms
                         if (IsApplying)
                             return;
 
+                        NearAllocationCounters.RecompiledDetour();
                         MMDbgLog.Trace($"Updating detour from {src} to {target} (recompiled {method} to {codeStart:x16})");
 
                         try
@@ -374,6 +375,7 @@ namespace MonoMod.Core.Platforms
 
             private static void OnMethodCompiled(RuntimeMethodHandle methodHandle, MethodBase? method, IntPtr codeStart, IntPtr codeStartRw, ulong codeSize)
             {
+                NearAllocationCounters.RecompileCallback();
                 if (method is null)
                 {
                     return;
