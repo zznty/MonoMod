@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
 
 namespace MonoMod.Core.Platforms.Memory
 {
@@ -14,25 +15,33 @@ namespace MonoMod.Core.Platforms.Memory
         private static readonly string? logPath = Environment.GetEnvironmentVariable("MONOMOD_ALLOC_LOG");
         private static readonly long startTicks = Stopwatch.GetTimestamp();
 
+        private static long iterations;
+
+        /// <summary>Counts one page probe of a range search.</summary>
+        internal static void CountIteration() => Interlocked.Increment(ref iterations);
+
         internal static IDisposable Measure(string operation, long waitStartTicks)
         {
             var entered = Stopwatch.GetTimestamp();
+            var iterationsAtEntry = Volatile.Read(ref iterations);
             var waited = entered - waitStartTicks;
             if (waited >= ThresholdTicks)
                 Write($"waited {Ms(waited):F0}ms for the allocator lock ({operation})");
-            return new Hold(operation, entered);
+            return new Hold(operation, entered, iterationsAtEntry);
         }
 
         private sealed class Hold : IDisposable
         {
             private readonly string operation;
             private readonly long enteredTicks;
+            private readonly long iterationsAtEntry;
             private bool disposed;
 
-            internal Hold(string operation, long enteredTicks)
+            internal Hold(string operation, long enteredTicks, long iterationsAtEntry)
             {
                 this.operation = operation;
                 this.enteredTicks = enteredTicks;
+                this.iterationsAtEntry = iterationsAtEntry;
             }
 
             public void Dispose()
@@ -41,8 +50,9 @@ namespace MonoMod.Core.Platforms.Memory
                     return;
                 disposed = true;
                 var held = Stopwatch.GetTimestamp() - enteredTicks;
+                var probes = Volatile.Read(ref iterations) - iterationsAtEntry;
                 if (held >= ThresholdTicks)
-                    Write($"held the allocator lock {Ms(held):F0}ms ({operation})");
+                    Write($"held the allocator lock {Ms(held):F0}ms ({operation}, {probes} probes)");
             }
         }
 
