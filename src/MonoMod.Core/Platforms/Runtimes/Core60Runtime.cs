@@ -183,6 +183,54 @@ namespace MonoMod.Core.Platforms.Runtimes
             [ThreadStatic]
             private static int hookEntrancy;
 
+            /// <summary>
+            /// An <see cref="IAllocatedMemory"/> backed by the native heap, for allocations which must not contend
+            /// the process-wide detour allocator's lock (for instance ones taken on the JIT compile path).
+            /// </summary>
+            private sealed class NativeHeapAllocation : IAllocatedMemory
+            {
+                private IntPtr address;
+
+                public NativeHeapAllocation(int size, int alignment)
+                {
+                    if (alignment > IntPtr.Size)
+                        throw new ArgumentOutOfRangeException(nameof(alignment));
+
+                    // the native heap already aligns to at least IntPtr.Size, so only round the size up to keep
+                    // the requested alignment valid for the allocation
+                    Size = (size + IntPtr.Size - 1) & ~(IntPtr.Size - 1);
+                    address = Marshal.AllocHGlobal(Size);
+                }
+
+                /// <inheritdoc/>
+                public bool IsExecutable => false;
+
+                /// <inheritdoc/>
+                public IntPtr BaseAddress => address;
+
+                /// <inheritdoc/>
+                public int Size { get; }
+
+                /// <inheritdoc/>
+                public unsafe Span<byte> Memory => new((void*)address, Size);
+
+                private void Dispose(bool disposing)
+                {
+                    var addr = Interlocked.Exchange(ref address, IntPtr.Zero);
+                    if (addr != IntPtr.Zero)
+                        Marshal.FreeHGlobal(addr);
+                }
+
+                ~NativeHeapAllocation() => Dispose(disposing: false);
+
+                /// <inheritdoc/>
+                public void Dispose()
+                {
+                    Dispose(disposing: true);
+                    GC.SuppressFinalize(this);
+                }
+            }
+
             [SuppressMessage("Design", "CA1031:Do not catch general exception types",
                 Justification = "We want to swallow exceptions here to prevent them from bubbling out of the JIT")]
             public unsafe CorJitResult CompileMethodHook(
@@ -214,15 +262,14 @@ namespace MonoMod.Core.Platforms.Runtimes
                             if (corJitWrapper is null)
                             {
                                 // we need to create corJitWrapper
-                                var allocReq = new AllocationRequest(sizeof(ICorJitInfoWrapper))
-                                {
-                                    Alignment = IntPtr.Size,
-                                    Executable = false
-                                };
-                                if (Runtime.System.MemoryAllocator.TryAllocate(allocReq, out var alloc))
-                                {
-                                    iCorJitInfoWrapper.Value = corJitWrapper = alloc;
-                                }
+                                //
+                                // This runs on the JIT's compile path, while the runtime holds JIT-internal locks,
+                                // and the detour allocator is a process-wide allocator whose lock is also taken by
+                                // (potentially slow) detour range allocations. Blocking on that lock here parks JIT
+                                // threads inside the JIT, so allocate the wrapper from the native heap instead: the
+                                // wrapper is a plain data structure (vtable pointer + slots) with no range or
+                                // executability requirement.
+                                iCorJitInfoWrapper.Value = corJitWrapper = new NativeHeapAllocation(sizeof(ICorJitInfoWrapper), IntPtr.Size);
                             }
                             // we still need to check if we were able to create it, because not creating it should not be a hard error
                             if (corJitWrapper is not null)
