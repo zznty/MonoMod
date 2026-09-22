@@ -382,7 +382,10 @@ namespace MonoMod.Core.Platforms
             }
             Helpers.Assert(from != to, $"Cannot detour a method to itself! (from: {from}, to: {to})");
 
-            MMDbgLog.Trace($"Creating simple detour 0x{from:x16} => 0x{to:x16}");
+            // crashlab: Spam, not Trace - this runs on the JIT thread whenever a hooked method is
+            // recompiled (Detour.OnMethodCompiled -> CreateSimpleDetour), and a Trace here is one sink
+            // round-trip per recompile, which tiered PGO makes hot.
+            MMDbgLog.Spam($"Creating simple detour 0x{from:x16} => 0x{to:x16}");
 
             var detourInfo = Architecture.ComputeDetourInfo(from, to, detourMaxSize);
 
@@ -446,7 +449,10 @@ namespace MonoMod.Core.Platforms
             }
             Helpers.Assert(from != to, $"Cannot detour a method to itself! (from: {from}, to: {to})");
 
-            MMDbgLog.Trace($"Creating simple detour 0x{from:x16} => 0x{to:x16}");
+            // crashlab: Spam, not Trace - this runs on the JIT thread whenever a hooked method is
+            // recompiled (Detour.OnMethodCompiled -> CreateSimpleDetour), and a Trace here is one sink
+            // round-trip per recompile, which tiered PGO makes hot.
+            MMDbgLog.Spam($"Creating simple detour 0x{from:x16} => 0x{to:x16}");
 
             var detourInfo = Architecture.ComputeDetourInfo(from, to, detourMaxSize);
 
