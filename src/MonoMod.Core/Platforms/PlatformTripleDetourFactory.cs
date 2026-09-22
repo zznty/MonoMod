@@ -252,7 +252,10 @@ namespace MonoMod.Core.Platforms
                         if (IsApplying)
                             return;
 
-                        MMDbgLog.Trace($"Updating detour from {src} to {target} (recompiled {method} to {codeStart:x16})");
+                        // crashlab: Spam, not Trace. This runs on the JIT thread for every recompile of a hooked
+                        // method, so a Trace here means one sink round-trip (and one wait-handle signal in the
+                        // test host) per recompile, which tiered PGO makes hot.
+                        MMDbgLog.Spam($"Updating detour from {src} to {target} (recompiled {method} to {codeStart:x16})");
 
                         try
                         {
@@ -373,6 +376,51 @@ namespace MonoMod.Core.Platforms
             }
 
             private static void OnMethodCompiled(RuntimeMethodHandle methodHandle, MethodBase? method, IntPtr codeStart, IntPtr codeStartRw, ulong codeSize)
+            {
+                var crashlabStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                try
+                {
+                    OnMethodCompiledCore(method, codeStart, codeStartRw, codeSize);
+                }
+                finally
+                {
+                    ReportJitThreadWork(System.Diagnostics.Stopwatch.GetTimestamp() - crashlabStartTicks);
+                }
+            }
+
+            // crashlab instrumentation: how much work MonoMod does on the JIT thread per recompile, and how
+            // long it takes. Rate-limited so the instrumentation itself does not add sink traffic to the path
+            // it is measuring.
+            private static long jitThreadCalls;
+            private static long jitThreadTotalTicks;
+            private static long jitThreadMaxTicks;
+            private static long jitThreadLastReport;
+
+            private static void ReportJitThreadWork(long elapsedTicks)
+            {
+                Interlocked.Increment(ref jitThreadCalls);
+                Interlocked.Add(ref jitThreadTotalTicks, elapsedTicks);
+
+                long prevMax;
+                while ((prevMax = Volatile.Read(ref jitThreadMaxTicks)) < elapsedTicks
+                    && Interlocked.CompareExchange(ref jitThreadMaxTicks, elapsedTicks, prevMax) != prevMax)
+                {
+                }
+
+                var now = System.Diagnostics.Stopwatch.GetTimestamp();
+                var lastReport = Volatile.Read(ref jitThreadLastReport);
+                if (now - lastReport >= System.Diagnostics.Stopwatch.Frequency * 5
+                    && Interlocked.CompareExchange(ref jitThreadLastReport, now, lastReport) == lastReport)
+                {
+                    var ticksPerMs = System.Diagnostics.Stopwatch.Frequency / 1000.0;
+                    MMDbgLog.Warning(
+                        $"jit-thread recompile work: calls={Interlocked.Read(ref jitThreadCalls)} " +
+                        $"total={Interlocked.Read(ref jitThreadTotalTicks) / ticksPerMs:F1}ms " +
+                        $"max={Volatile.Read(ref jitThreadMaxTicks) / ticksPerMs:F1}ms");
+                }
+            }
+
+            private static void OnMethodCompiledCore(MethodBase? method, IntPtr codeStart, IntPtr codeStartRw, ulong codeSize)
             {
                 if (method is null)
                 {
