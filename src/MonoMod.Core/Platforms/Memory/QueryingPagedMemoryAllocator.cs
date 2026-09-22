@@ -54,6 +54,13 @@ namespace MonoMod.Core.Platforms.Memory
     public sealed class QueryingPagedMemoryAllocator : PagedMemoryAllocator
     {
         private readonly QueryingMemoryPageAllocatorBase pageAlloc;
+
+        /// <summary>
+        /// Maximum number of page probes a single range allocation may perform before giving up. Bounds the time
+        /// spent inside the allocator's lock when the target range is heavily fragmented.
+        /// </summary>
+        private const int MaxPageProbes = 1024;
+
         /// <summary>
         /// Constructs a <see cref="QueryingPagedMemoryAllocator"/> using the provided <see cref="QueryingMemoryPageAllocatorBase"/>.
         /// </summary>
@@ -99,6 +106,13 @@ namespace MonoMod.Core.Platforms.Memory
             var lowPage = targetPage;
             var highPage = targetPage + PageSize;
 
+            // Each probe costs one or two OS calls (a region query plus, for free regions, a mapping attempt).
+            // On a heavily fragmented address space - a process with thousands of small mappings inside the
+            // target range - an unbounded walk can spend minutes inside the allocator's lock, which stalls
+            // every other allocation. Give up after a bounded number of probes instead; callers that cannot
+            // wait (detour computations on the JIT path) have allocation-free strategies to fall back to.
+            var probes = 0;
+
             while (lowPage >= lowPageBound || highPage < highPageBound)
             {
                 // first check the high pages, while they're closer than low pages
@@ -107,6 +121,8 @@ namespace MonoMod.Core.Platforms.Memory
                     (lowPage < lowPageBound || target - lowPage > highPage - target)
                 )
                 {
+                    if (++probes > MaxPageProbes)
+                        goto GaveUp;
                     if (TryAllocNewPage(request, ref highPage, true, out allocated))
                         return true;
                 }
@@ -117,12 +133,19 @@ namespace MonoMod.Core.Platforms.Memory
                     (highPage >= highPageBound || target - lowPage < highPage - target)
                 )
                 {
+                    if (++probes > MaxPageProbes)
+                        goto GaveUp;
                     if (TryAllocNewPage(request, ref lowPage, false, out allocated))
                         return true;
                 }
             }
 
             // if we fall out to here, we just couldn't allocate, so sucks
+            allocated = null;
+            return false;
+
+            GaveUp:
+            MMDbgLog.Spam($"Gave up looking for a free page within [{lowPageBound:x16}, {highPageBound:x16}) after {probes} probes");
             allocated = null;
             return false;
         }
