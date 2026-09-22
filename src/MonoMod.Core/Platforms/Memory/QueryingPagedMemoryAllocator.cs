@@ -54,6 +54,18 @@ namespace MonoMod.Core.Platforms.Memory
     public sealed class QueryingPagedMemoryAllocator : PagedMemoryAllocator
     {
         private readonly QueryingMemoryPageAllocatorBase pageAlloc;
+
+        /// <summary>
+        /// The page a range allocation last succeeded from, used as the starting point of the next range search.
+        /// </summary>
+        /// <remarks>
+        /// The request only requires an address inside its bounds - closeness to <see cref="PositionedAllocationRequest.Target"/>
+        /// is a preference. Restarting every search at the target makes the search cost grow with the number of
+        /// mappings between the target and the free space, which is quadratic over a fragmented address space
+        /// (thousands of small mappings inside a +-2GB window cost minutes per allocation). Resuming near the
+        /// previous result keeps the common case at a handful of probes.
+        /// </remarks>
+        private nint nextSearchHint;
         /// <summary>
         /// Constructs a <see cref="QueryingPagedMemoryAllocator"/> using the provided <see cref="QueryingMemoryPageAllocatorBase"/>.
         /// </summary>
@@ -96,8 +108,14 @@ namespace MonoMod.Core.Platforms.Memory
             // we'll do the same approach for trying to find an existing page, but querying the OS for free pages to allocate
             var target = request.Target;
 
-            var lowPage = targetPage;
-            var highPage = targetPage + PageSize;
+            // Resume near where the last range allocation succeeded when that is inside the requested bounds;
+            // otherwise start at the target.
+            var startPage = nextSearchHint != 0 && nextSearchHint >= lowPageBound && nextSearchHint < highPageBound
+                ? nextSearchHint
+                : targetPage;
+
+            var lowPage = startPage;
+            var highPage = startPage + PageSize;
 
             while (lowPage >= lowPageBound || highPage < highPageBound)
             {
@@ -157,6 +175,7 @@ namespace MonoMod.Core.Platforms.Memory
                 }
 
                 // we successfully allocated, return the page allocation
+                nextSearchHint = pageObj.BaseAddr;
                 allocated = alloc;
                 return true;
 
