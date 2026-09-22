@@ -1,4 +1,5 @@
-﻿using MonoMod.Core.Platforms.Architectures.AltEntryFactories;
+﻿﻿using MonoMod.Core.Platforms.Architectures.AltEntryFactories;
+using MonoMod.Core.Platforms.Memory;
 using MonoMod.Core.Utils;
 using MonoMod.Utils;
 using System;
@@ -355,6 +356,10 @@ namespace MonoMod.Core.Platforms.Architectures
             AltEntryFactory = new IcedAltEntryFactory(system, 64);
         }
 
+        // How long a detour computation may wait for the memory allocator's lock. Detour computations run inside
+        // the JIT compile callback (for hooked methods being recompiled), so they must not park a JIT thread.
+        private const int DetourAllocationLockTimeoutMs = 50;
+
         [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
             Justification = "Ownership of the allocation is transferred correctly.")]
         public NativeDetourInfo ComputeDetourInfo(nint from, nint to, int sizeHint)
@@ -372,9 +377,20 @@ namespace MonoMod.Core.Platforms.Architectures
             if ((nuint)highBound < (nuint)target)
                 highBound = -1;
             var memRequest = new PositionedAllocationRequest((nint)target, (nint)lowBound, (nint)highBound, new(IntPtr.Size));
-            if (sizeHint >= Rel32Ind64Kind.Instance.Size && system.MemoryAllocator.TryAllocateInRange(memRequest, out var allocated))
+            // Not worth parking on: this runs inside the JIT compile callback when a hooked method is
+            // (re)compiled, while the runtime holds JIT-internal locks. If the allocator is busy, take the
+            // allocation-free Abs64 detour below instead of blocking a JIT thread behind it.
+            var allocatedInRange = system.MemoryAllocator is PagedMemoryAllocator pagedAllocator
+                ? pagedAllocator.TryAllocateInRange(memRequest, DetourAllocationLockTimeoutMs, out var allocated)
+                : system.MemoryAllocator.TryAllocateInRange(memRequest, out allocated);
+            if (sizeHint >= Rel32Ind64Kind.Instance.Size && allocatedInRange)
             {
                 return new(from, to, Rel32Ind64Kind.Instance, allocated);
+            }
+
+            if (sizeHint >= Rel32Ind64Kind.Instance.Size)
+            {
+                MMDbgLog.Spam($"Could not allocate a rel32-indirect slot near 0x{from:x16} within {DetourAllocationLockTimeoutMs}ms; using an absolute detour");
             }
 
             // TODO: more, smaller detours

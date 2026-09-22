@@ -469,6 +469,19 @@ namespace MonoMod.Core.Platforms.Memory
 
         /// <inheritdoc/>
         public bool TryAllocateInRange(PositionedAllocationRequest request, [MaybeNullWhen(false)] out IAllocatedMemory allocated)
+            => TryAllocateInRange(request, Timeout.Infinite, out allocated);
+
+        /// <summary>
+        /// Tries to allocate memory in range, waiting no longer than <paramref name="timeoutMs"/> to acquire the
+        /// allocator's internal lock.
+        /// </summary>
+        /// <remarks>
+        /// Callers on latency-sensitive paths which must not block - the JIT compile path, which runs while the
+        /// runtime holds JIT-internal locks - use this and fall back to an allocation-free strategy when the
+        /// allocator is busy, instead of parking a JIT thread behind whatever holds the allocator lock.
+        /// </remarks>
+        /// <returns><see langword="true"/> if memory was allocated; <see langword="false"/> if the request could not be satisfied or the lock was not acquired in time.</returns>
+        internal bool TryAllocateInRange(PositionedAllocationRequest request, int timeoutMs, [MaybeNullWhen(false)] out IAllocatedMemory allocated)
         {
             if ((nint)request.Target < request.LowBound || (nint)request.Target > request.HighBound)
                 throw new ArgumentException("Target not between low and high", nameof(request));
@@ -490,8 +503,16 @@ namespace MonoMod.Core.Platforms.Memory
 
             var target = (nint)request.Target;
 
-            lock (sync)
+            var lockTaken = false;
+            try
             {
+                Monitor.TryEnter(sync, timeoutMs, ref lockTaken);
+                if (!lockTaken)
+                {
+                    allocated = null;
+                    return false;
+                }
+
                 var lowIdxBound = GetBoundIndex(lowPageBound);
                 var highIdxBound = GetBoundIndex(highPageBound);
 
@@ -540,6 +561,11 @@ namespace MonoMod.Core.Platforms.Memory
                 // if we make it here, we need to allocate a page from the OS
 
                 return TryAllocateNewPage(request, targetPage, lowPageBound, highPageBound, out allocated);
+            }
+            finally
+            {
+                if (lockTaken)
+                    Monitor.Exit(sync);
             }
         }
 
