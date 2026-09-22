@@ -46,6 +46,17 @@ namespace MonoMod.Core.Platforms.Memory
         /// <param name="errorMsg">An error message describing the error that ocurred, if any.</param>
         /// <returns><see langword="true"/> if the page was successfully freed; <see langword="false"/> otherwise.</returns>
         public abstract bool TryFreePage(IntPtr pageAddr, [NotNullWhen(false)] out string? errorMsg);
+
+        /// <summary>
+        /// Gets whether <see cref="TryFreePage"/> can release a single page which was mapped as part of a larger
+        /// block, leaving the rest of the block mapped.
+        /// </summary>
+        /// <remarks>
+        /// Block mappings amortize range searches over many pages, but they are only safe when the pages can be
+        /// released individually - <c>VirtualFree(ptr, 0, MEM_RELEASE)</c> drops an entire reservation at once,
+        /// so on Windows blocks must stay single-page.
+        /// </remarks>
+        public virtual bool SupportsPartialFree => false;
     }
 
     /// <summary>
@@ -66,6 +77,12 @@ namespace MonoMod.Core.Platforms.Memory
         /// previous result keeps the common case at a handful of probes.
         /// </remarks>
         private nint nextSearchHint;
+
+        /// <summary>
+        /// Maximum number of pages mapped in a single range search. Bounds both the address space a single
+        /// search can claim and the memory wasted when a request only needs a fraction of the block.
+        /// </summary>
+        private const int MaxBlockPages = 64;
         /// <summary>
         /// Constructs a <see cref="QueryingPagedMemoryAllocator"/> using the provided <see cref="QueryingMemoryPageAllocatorBase"/>.
         /// </summary>
@@ -152,11 +169,29 @@ namespace MonoMod.Core.Platforms.Memory
                 if (!isFree) // this is not a free block, so we don't care
                     goto Fail;
 
-                if (!pageAlloc.TryAllocatePage(page, PageSize, request.Base.Executable, out var allocBase)) // allocation failed
+                // Map a block rather than a single page. Range searches are expensive (one or two OS calls per
+                // probe over a fragmented address space), and every page registered here is served from
+                // AllocList afterwards - without touching the OS at all - so mapping a block amortizes the
+                // search over all the allocations that follow it in this window.
+                var blockPages = pageAlloc.SupportsPartialFree ? (int)(allocSize / PageSize) : 1;
+                if (blockPages < 1)
+                    blockPages = 1;
+                else if (blockPages > MaxBlockPages)
+                    blockPages = MaxBlockPages;
+
+                var blockSize = (nint)blockPages * PageSize;
+                if (!pageAlloc.TryAllocatePage(page, blockSize, request.Base.Executable, out var allocBase)) // allocation failed
                     goto Fail;
 
-                var pageObj = new Page(this, allocBase, (uint)PageSize, request.Base.Executable);
-                InsertAllocatedPage(pageObj);
+                Page? blockFirstPage = null;
+                for (var blockIndex = 0; blockIndex < blockPages; blockIndex++)
+                {
+                    var blockPage = new Page(this, allocBase + (nint)blockIndex * PageSize, (uint)PageSize, request.Base.Executable);
+                    InsertAllocatedPage(blockPage);
+                    blockFirstPage ??= blockPage;
+                }
+
+                var pageObj = blockFirstPage!;
 
                 // now that we have a page, we'll try to allocate out of it
                 // if that fails, immediately register for cleanup

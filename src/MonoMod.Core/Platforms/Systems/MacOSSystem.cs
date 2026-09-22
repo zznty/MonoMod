@@ -395,7 +395,7 @@ namespace MonoMod.Core.Platforms.Systems
 
             public override unsafe bool TryAllocatePage(nint size, bool executable, out IntPtr allocated)
             {
-                Helpers.Assert(size == PageSize);
+                Helpers.Assert(size % PageSize == 0);
 
                 var prot = executable ? vm_prot_t.Execute : vm_prot_t.None;
                 prot |= vm_prot_t.Read | vm_prot_t.Write;
@@ -437,7 +437,7 @@ namespace MonoMod.Core.Platforms.Systems
 
             public override unsafe bool TryAllocatePage(IntPtr pageAddr, nint size, bool executable, out IntPtr allocated)
             {
-                Helpers.Assert(size == PageSize);
+                Helpers.Assert(size % PageSize == 0);
 
                 var prot = executable ? vm_prot_t.Execute : vm_prot_t.None;
                 prot |= vm_prot_t.Read | vm_prot_t.Write;
@@ -476,6 +476,9 @@ namespace MonoMod.Core.Platforms.Systems
                 allocated = (IntPtr)addr;
                 return true;
             }
+
+            // mach_vm_deallocate takes an explicit size, so a single page can be released out of a larger mapping.
+            public override bool SupportsPartialFree => true;
 
             public override bool TryFreePage(IntPtr pageAddr, [NotNullWhen(false)] out string? errorMsg)
             {
