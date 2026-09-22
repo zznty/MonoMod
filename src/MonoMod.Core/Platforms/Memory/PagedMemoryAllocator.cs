@@ -145,7 +145,9 @@ namespace MonoMod.Core.Platforms.Memory
             {
                 // the sizes we allocate we want to round to a power of two
                 //size = BitOperations.RoundUpToPowerOf2(size);
-                lock (sync)
+            var lockWaitStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            lock (sync)
+            using (AllocatorLockLog.Measure("TryAllocate", lockWaitStart))
                 {
 
                     ref var ptrNode = ref freeList;
@@ -245,7 +247,9 @@ namespace MonoMod.Core.Platforms.Memory
             // correctness relies on this only being called internally by PageAlloc's Dispose()
             internal void FreeMem(uint offset, uint size)
             {
-                lock (sync)
+            var lockWaitStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            lock (sync)
+            using (AllocatorLockLog.Measure("FreeMem", lockWaitStart))
                 {
                     ref var node = ref freeList;
 
@@ -432,7 +436,9 @@ namespace MonoMod.Core.Platforms.Memory
 
             while (pagesToClean.TryTake(out var page))
             {
-                lock (sync)
+            var lockWaitStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            lock (sync)
+            using (AllocatorLockLog.Measure("DoCleanup", lockWaitStart))
                 {
                     // if the page is no longer empty, don't free
                     if (!page.IsEmpty)
@@ -490,7 +496,9 @@ namespace MonoMod.Core.Platforms.Memory
 
             var target = (nint)request.Target;
 
+            var lockWaitStart = System.Diagnostics.Stopwatch.GetTimestamp();
             lock (sync)
+            using (AllocatorLockLog.Measure("TryAllocateInRange", lockWaitStart))
             {
                 var lowIdxBound = GetBoundIndex(lowPageBound);
                 var highIdxBound = GetBoundIndex(highPageBound);
@@ -579,7 +587,9 @@ namespace MonoMod.Core.Platforms.Memory
             if (request.Size > pageSize) // TODO: large allocations
                 throw new NotSupportedException("Single allocations cannot be larger than a page");
 
+            var lockWaitStart = System.Diagnostics.Stopwatch.GetTimestamp();
             lock (sync)
+            using (AllocatorLockLog.Measure("TryAllocate", lockWaitStart))
             {
                 foreach (var page in AllocList)
                 {
