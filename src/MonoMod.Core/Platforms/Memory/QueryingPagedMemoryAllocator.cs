@@ -39,6 +39,17 @@ namespace MonoMod.Core.Platforms.Memory
         /// <param name="allocated">The address of the allocated page, if successful.</param>
         /// <returns><see langword="true"/> if a page was successfully allocated; <see langword="false"/> otherwise.</returns>
         public abstract bool TryAllocatePage(IntPtr pageAddr, nint size, bool executable, out IntPtr allocated);
+
+        /// <summary>
+        /// Tries to allocate a page at <paramref name="hint"/>, or as close to it as the OS is willing to place it.
+        /// </summary>
+        /// <remarks>
+        /// Platforms which can place a mapping near an address without first proving that address is free implement
+        /// this; the range search uses it to avoid walking the region map (which costs one or two OS calls per region).
+        /// Implementations must report the address they actually used, which the caller validates against its bounds.
+        /// </remarks>
+        public virtual bool TryAllocatePageNear(IntPtr hint, nint size, bool executable, out IntPtr allocated)
+            => TryAllocatePage(hint, size, executable, out allocated);
         /// <summary>
         /// Tries to free the page at the provided addresss.
         /// </summary>
@@ -54,6 +65,11 @@ namespace MonoMod.Core.Platforms.Memory
     public sealed class QueryingPagedMemoryAllocator : PagedMemoryAllocator
     {
         private readonly QueryingMemoryPageAllocatorBase pageAlloc;
+
+        /// <summary>
+        /// Number of doubling steps (per direction) used when asking the OS to place a page near a target address.
+        /// </summary>
+        private const int NearProbeSteps = 16;
         /// <summary>
         /// Constructs a <see cref="QueryingPagedMemoryAllocator"/> using the provided <see cref="QueryingMemoryPageAllocatorBase"/>.
         /// </summary>
@@ -96,6 +112,9 @@ namespace MonoMod.Core.Platforms.Memory
             // we'll do the same approach for trying to find an existing page, but querying the OS for free pages to allocate
             var target = request.Target;
 
+            if (TryAllocateNear(request, targetPage, lowPageBound, highPageBound, out allocated))
+                return true;
+
             var lowPage = targetPage;
             var highPage = targetPage + PageSize;
 
@@ -123,6 +142,51 @@ namespace MonoMod.Core.Platforms.Memory
             }
 
             // if we fall out to here, we just couldn't allocate, so sucks
+            allocated = null;
+            return false;
+        }
+
+
+        /// <summary>
+        /// Asks the OS to place a page at or near the target. One probe is a single OS call, while the region walk
+        /// below costs one or two per region it crosses - seconds on a fragmented address space, which is what a
+        /// translated (Rosetta) macOS process has.
+        /// </summary>
+        private bool TryAllocateNear(PositionedAllocationRequest request, nint targetPage, nint lowPageBound, nint highPageBound, [MaybeNullWhen(false)] out IAllocatedMemory allocated)
+        {
+            for (var step = 0; step < NearProbeSteps; step++)
+            {
+                var offset = (nint)1 << step;
+
+                for (var direction = 0; direction < 2; direction++)
+                {
+                    var candidate = direction == 0 ? targetPage + offset * PageSize : targetPage - offset * PageSize;
+                    if (candidate < lowPageBound || candidate >= highPageBound)
+                        continue;
+                    if (!pageAlloc.TryAllocatePageNear(candidate, PageSize, request.Base.Executable, out var address))
+                        continue;
+
+                    // the OS may place it elsewhere; only an address inside the bounds is acceptable
+                    if (address < lowPageBound || address >= highPageBound)
+                    {
+                        pageAlloc.TryFreePage(address, out _);
+                        continue;
+                    }
+
+                    var page = new Page(this, address, (uint)PageSize, request.Base.Executable);
+                    InsertAllocatedPage(page);
+
+                    if (!page.TryAllocate((uint)request.Base.Size, (uint)request.Base.Alignment, out var alloc))
+                    {
+                        RegisterForCleanup(page);
+                        continue;
+                    }
+
+                    allocated = alloc;
+                    return true;
+                }
+            }
+
             allocated = null;
             return false;
         }
