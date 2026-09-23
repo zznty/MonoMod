@@ -71,6 +71,12 @@ namespace MonoMod.Core.Platforms.Memory
         /// </summary>
         private const int NearProbeSteps = 16;
 
+        /// <summary>
+        /// Largest stride used when descending past an unusable gap. The descent doubles up to this and never
+        /// gives up, so a required allocation still reaches every 1GB/1MB boundary inside its bounds.
+        /// </summary>
+        private const int MaxPageStep = 1024 * 1024;
+
 
         /// <summary>
         /// The page the last range allocation succeeded from - the next walk starts there when it is still inside
@@ -134,17 +140,19 @@ namespace MonoMod.Core.Platforms.Memory
             // next region starts, not where free space begins), so an unbounded downward search over a large
             // gap costs one probe per page - hundreds of thousands of OS calls - while the request only needs
             // an address inside the bounds.
+            var upwardStep = PageSize;
             while (highPage < highPageBound)
             {
-                if (TryAllocNewPage(request, ref highPage, true, out allocated))
+                if (TryAllocNewPage(request, ref highPage, true, ref upwardStep, out allocated))
                     return true;
             }
 
             // then downwards; this cannot be capped, because for targets whose upper half is fully mapped the
             // free space only exists below and a cap turns a required allocation into a failure
+            var downwardStep = PageSize;
             while (lowPage >= lowPageBound)
             {
-                if (TryAllocNewPage(request, ref lowPage, false, out allocated))
+                if (TryAllocNewPage(request, ref lowPage, false, ref downwardStep, out allocated))
                     return true;
             }
 
@@ -198,12 +206,16 @@ namespace MonoMod.Core.Platforms.Memory
             return false;
         }
 
-        private unsafe bool TryAllocNewPage(PositionedAllocationRequest request, ref nint page, bool goingUp, [MaybeNullWhen(false)] out IAllocatedMemory allocated)
+        private unsafe bool TryAllocNewPage(PositionedAllocationRequest request, ref nint page, bool goingUp, ref nint pageStep, [MaybeNullWhen(false)] out IAllocatedMemory allocated)
         {
             if (pageAlloc.TryQueryPage(page, out var isFree, out var baseAddr, out var allocSize))
             {
-                if (!isFree) // this is not a free block, so we don't care
+                if (!isFree)
+                {
+                    // stepping past a mapped region: resume probing at page granularity below it
+                    pageStep = PageSize;
                     goto Fail;
+                }
 
                 if (!pageAlloc.TryAllocatePage(page, PageSize, request.Base.Executable, out var allocBase)) // allocation failed
                     goto Fail;
@@ -235,9 +247,19 @@ namespace MonoMod.Core.Platforms.Memory
                 Fail:
                 // We're failing out, update the page address appropriately
                 if (goingUp)
+                {
+                    // an upward step learns where the next region starts, so it can skip a whole gap
                     page = baseAddr + allocSize;
+                }
                 else
-                    page = baseAddr - PageSize;
+                {
+                    // downward the query only reports the *next* region, never where free space begins below, so
+                    // descend geometrically: stepping one page across a large unusable gap costs hundreds of
+                    // thousands of OS calls, and a fixed stride either degrades the same way or skips the range
+                    page = baseAddr - pageStep;
+                    if (pageStep < MaxPageStep)
+                        pageStep *= 2;
+                }
 
                 allocated = null;
                 return false;
