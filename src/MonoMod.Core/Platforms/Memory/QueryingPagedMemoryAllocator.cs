@@ -71,11 +71,6 @@ namespace MonoMod.Core.Platforms.Memory
         /// </summary>
         private const int NearProbeSteps = 16;
 
-        /// <summary>
-        /// Maximum number of probes spent searching below the target. Downward steps cannot skip free space, so
-        /// this caps what would otherwise be a page-by-page scan across a large gap.
-        /// </summary>
-        private const int MaxDownwardProbes = 4096;
 
         /// <summary>
         /// The page the last range allocation succeeded from - the next walk starts there when it is still inside
@@ -145,12 +140,10 @@ namespace MonoMod.Core.Platforms.Memory
                     return true;
             }
 
-            // then downwards, with a bounded number of probes so a large free gap below the target cannot turn
-            // into an unbounded linear scan
-            var downwardProbes = 0;
-            while (lowPage >= lowPageBound && downwardProbes < MaxDownwardProbes)
+            // then downwards; this cannot be capped, because for targets whose upper half is fully mapped the
+            // free space only exists below and a cap turns a required allocation into a failure
+            while (lowPage >= lowPageBound)
             {
-                downwardProbes++;
                 if (TryAllocNewPage(request, ref lowPage, false, out allocated))
                     return true;
             }
