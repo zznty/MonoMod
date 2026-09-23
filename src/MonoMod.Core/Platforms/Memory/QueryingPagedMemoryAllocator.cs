@@ -70,6 +70,18 @@ namespace MonoMod.Core.Platforms.Memory
         /// Number of doubling steps (per direction) used when asking the OS to place a page near a target address.
         /// </summary>
         private const int NearProbeSteps = 16;
+
+        /// <summary>
+        /// Maximum number of probes spent searching below the target. Downward steps cannot skip free space, so
+        /// this caps what would otherwise be a page-by-page scan across a large gap.
+        /// </summary>
+        private const int MaxDownwardProbes = 4096;
+
+        /// <summary>
+        /// The page the last range allocation succeeded from - the next walk starts there when it is still inside
+        /// the requested bounds, so a sequence of allocations in the same window does not rescan the map.
+        /// </summary>
+        private nint lastAllocatedPage;
         /// <summary>
         /// Constructs a <see cref="QueryingPagedMemoryAllocator"/> using the provided <see cref="QueryingMemoryPageAllocatorBase"/>.
         /// </summary>
@@ -115,30 +127,32 @@ namespace MonoMod.Core.Platforms.Memory
             if (TryAllocateNear(request, targetPage, lowPageBound, highPageBound, out allocated))
                 return true;
 
-            var lowPage = targetPage;
-            var highPage = targetPage + PageSize;
+            var startPage = lastAllocatedPage >= lowPageBound && lastAllocatedPage < highPageBound
+                ? lastAllocatedPage
+                : targetPage;
 
-            while (lowPage >= lowPageBound || highPage < highPageBound)
+            var lowPage = startPage;
+            var highPage = startPage + PageSize;
+
+            // Search upwards first. An upward step can skip a whole region or gap in one probe, while a
+            // downward step past free space can only advance one page at a time (the query reports where the
+            // next region starts, not where free space begins), so an unbounded downward search over a large
+            // gap costs one probe per page - hundreds of thousands of OS calls - while the request only needs
+            // an address inside the bounds.
+            while (highPage < highPageBound)
             {
-                // first check the high pages, while they're closer than low pages
-                while (
-                    highPage < highPageBound &&
-                    (lowPage < lowPageBound || target - lowPage > highPage - target)
-                )
-                {
-                    if (TryAllocNewPage(request, ref highPage, true, out allocated))
-                        return true;
-                }
+                if (TryAllocNewPage(request, ref highPage, true, out allocated))
+                    return true;
+            }
 
-                // then try low pages, while they're closer than high pages
-                while (
-                    lowPage >= lowPageBound &&
-                    (highPage >= highPageBound || target - lowPage < highPage - target)
-                )
-                {
-                    if (TryAllocNewPage(request, ref lowPage, false, out allocated))
-                        return true;
-                }
+            // then downwards, with a bounded number of probes so a large free gap below the target cannot turn
+            // into an unbounded linear scan
+            var downwardProbes = 0;
+            while (lowPage >= lowPageBound && downwardProbes < MaxDownwardProbes)
+            {
+                downwardProbes++;
+                if (TryAllocNewPage(request, ref lowPage, false, out allocated))
+                    return true;
             }
 
             // if we fall out to here, we just couldn't allocate, so sucks
@@ -221,6 +235,7 @@ namespace MonoMod.Core.Platforms.Memory
                 }
 
                 // we successfully allocated, return the page allocation
+                lastAllocatedPage = pageObj.BaseAddr;
                 allocated = alloc;
                 return true;
 

@@ -483,10 +483,16 @@ namespace MonoMod.Core.Platforms.Systems
                 // free and reports where it actually landed (measured on a translated x64 process: 200/200 hints
                 // honoured, ~135us per probe, against seconds for a region-by-region search). The caller validates
                 // the returned address against its bounds, and executable pages keep using the fixed path above.
-                if (executable)
+                // arm64 requires MAP_JIT for writable-executable mappings and hands that path to the fixed
+                // allocator; on x86_64 the hint path can place either kind of page.
+                if (executable && PlatformDetection.Architecture == ArchitectureKind.Arm64)
                     return TryAllocatePage(hint, size, executable, out allocated);
 
-                allocated = mmap(hint, (ulong)size, map_prot.Read | map_prot.Write, map_flags.Private | map_flags.Anonymous, -1, 0);
+                var prot = map_prot.Read | map_prot.Write;
+                if (executable)
+                    prot |= map_prot.Execute;
+
+                allocated = mmap(hint, (ulong)size, prot, map_flags.Private | map_flags.Anonymous, -1, 0);
                 if (allocated == (IntPtr)(-1))
                 {
                     allocated = default;
